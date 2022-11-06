@@ -41,7 +41,7 @@ private:
 	pcl::PointCloud<pcl::PointXYZI>::Ptr map;	
 	sensor_msgs::PointCloud2 Final_map;
 	sensor_msgs::PointCloud2 Final_cloud;
-	Eigen::Matrix4f l2c_eigen_transform;
+	Eigen::Matrix4f c2l_eigen_transform;
 
 
 	// =============== variables of output file ===============
@@ -83,7 +83,8 @@ public:
 		Eigen::Quaternionf link_quaternion(rot.at(3), rot.at(0), rot.at(1), rot.at(2));
 		Eigen::Matrix3f link_rotation = link_quaternion.toRotationMatrix();
 
-		l2c_eigen_transform << 		link_rotation(0, 0), link_rotation(0, 1), link_rotation(0, 2), trans.at(0),
+		// equivalent to get_transform("velodyne");
+		c2l_eigen_transform << 		link_rotation(0, 0), link_rotation(0, 1), link_rotation(0, 2), trans.at(0),
 									link_rotation(1, 0), link_rotation(1, 1), link_rotation(1, 2), trans.at(1),
 									link_rotation(2, 0), link_rotation(2, 1), link_rotation(2, 2), trans.at(2),
 													  0, 		   		   0, 		  			0, 		     1;
@@ -188,8 +189,23 @@ public:
 		pcl::PointCloud<pcl::PointXYZI>::Ptr final_filtered_scan(new pcl::PointCloud<pcl::PointXYZI>);
 		filtered_scan = down_sampling(msg);
 
-		// =============== transform scan to car ===============
-		transformPointCloud(*filtered_scan, *filtered_scan, l2c_eigen_transform);
+		// =============== transform lidar scan to car ===============
+		// transformPointCloud(source, target, transform)
+
+		// =============== Illustration of transformPointCloud ===============
+		// 將source的點雲使用transform轉換
+		//               資料                                        資料
+		// 			    /										   /
+		// 			  /										     /
+		// 			/										   /	
+		//	 source				======>					source
+		//											   /
+		// 											 /	transform
+		// 										   /
+		// 									target
+		// =============== Illustration End ===============
+		// 本來是由lidar看出去的資料，現在變成從車子(base_link)看出去
+		transformPointCloud(*filtered_scan, *filtered_scan, c2l_eigen_transform);
 
 		// =============== start performing ICP ===============
 		pcl::IterativeClosestPoint<pcl::PointXYZI, pcl::PointXYZI> icp;
@@ -237,7 +253,7 @@ public:
 	}
 
 	/**
-	 * @brief Get the transform between link_name(source) to base_link(target)
+	 * @brief Get the transform between base_link(target) to link_name(source)  (由target看向source)
 	 * 
 	 * @param link_name source link(lidar)
 	 * @return Eigen::Matrix4f Homogeneous Transformation Matrix
