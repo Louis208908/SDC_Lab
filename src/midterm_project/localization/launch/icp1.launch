@@ -1,0 +1,17 @@
+<launch>
+
+    <arg name="save_path" default="$(find localization)/results/final_submit1.csv" />
+    <arg name="map_path" default="/home/louis/sdc_ws/data/itri_map.pcd" />
+    <param name="use_sim_time" value="true" />
+
+
+    <node pkg="localization" type="icp1" name="base_localizer1" output="screen">
+        <rosparam file="$(find localization)/config/itri.yaml" command="load" />
+        <rosparam param="result_save_path" subst_value="True">$(arg save_path)</rosparam>
+        <rosparam param="map_path" subst_value="True">$(arg map_path)</rosparam>
+        <param name="mapLeafSize" type="double" value="0.15"/>
+        <param name="scanLeafSize" type="double" value="0.15"/>
+    </node>
+    
+
+</launch>

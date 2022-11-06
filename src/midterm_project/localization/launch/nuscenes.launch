@@ -7,10 +7,10 @@
 
     <node name="map_publisher" pkg="map_tile_loader" type="map_publisher" output="screen">
         <!-- <remap from="/query_pose" to="/lidar_pose"/> -->
-        <param name="map_path" type="string" value="/root/catkin_ws/data/nuscenes_maps" />
+        <param name="map_path" type="string" value="/home/louis/sdc_ws/data/nuscenes_maps" />
     </node>
 
-    <node pkg="localization" type="localizer" name="localizer" output="screen">
+    <node pkg="localization" type="localizer1" name="localizer" output="screen">
         <rosparam file="$(find localization)/config/nuscenes.yaml" command="load" />
         <rosparam param="result_save_path" subst_value="True">$(arg save_path)</rosparam>
     </node>

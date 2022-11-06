@@ -30,8 +30,11 @@ include_directories(
   ${EIGEN3_INCLUDE_DIR}
 )
 
-add_executable(localizer src/localizer_node.cpp)
-target_link_libraries(localizer ${catkin_LIBRARIES})
+add_executable(base_localizer src/localizer_node.cpp)
+target_link_libraries(base_localizer ${catkin_LIBRARIES})
+
+add_executable(icp1 src/icp_locolization1.cpp)
+target_link_libraries(icp1 ${catkin_LIBRARIES})
 
 add_executable(pub_map src/pub_map_node.cpp)
 target_link_libraries(pub_map ${catkin_LIBRARIES})
