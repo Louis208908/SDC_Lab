@@ -120,10 +120,10 @@ public:
 
 		double yaw = 2.449;
 
-		initial_guess << 	cos(yaw),	-sin(yaw),	0,	gps_point->point.x,
-							sin(yaw),	 cos(yaw),	0,	gps_point->point.y,
-								   0,			0,	1,	gps_point->point.z,
-								   0,			0,	0,					 1;
+		initial_guess << 	cos(yaw),	-sin(yaw),		0,		gps_point->point.x,
+							sin(yaw),	 cos(yaw),		0,		gps_point->point.y,
+								   0,			0,		1,		gps_point->point.z,
+								   0,			0,		0,						 1;
 
 		return initial_guess;
 	}
@@ -151,7 +151,7 @@ public:
 		// 所以我們上面需要先將msg轉成PointCloud後 再轉乘PointCloud2,
 		pcl::VoxelGrid<pcl::PCLPointCloud2> voxel_filter;
 		voxel_filter.setInputCloud(filtered_scan);
-		voxel_filter.setLeafSize(0.15f, 0.15f, 0.15f);
+		voxel_filter.setLeafSize((float)scan_leaf_size, (float)scan_leaf_size, (float)scan_leaf_size);
 		voxel_filter.filter(*filtered_scan);
 
 		// PointCloud2 -> PointCloud
