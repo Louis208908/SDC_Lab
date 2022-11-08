@@ -31,7 +31,6 @@ class icp_localization
 private:
 	// =============== ros util parameters ===============
 	ros::NodeHandle nh;
-	ros::Publisher pub_map;
 	ros::Subscriber sub_map;
 	ros::Subscriber sub_gps;
 	ros::Subscriber sub_odom;
@@ -42,8 +41,6 @@ private:
 	tf::TransformBroadcaster tf_broadcaster;
 
 	// =============== variables of transformation ===============
-	bool use_gps;
-	bool use_odom;
 	double odom_ratio;
 	double lidar_ratio;
 	double frequency_ratio;
@@ -53,7 +50,6 @@ private:
 	sensor_msgs::PointCloud2 Final_map;
 	Eigen::Matrix4f c2l_eigen_transform;
 	sensor_msgs::PointCloud2 Final_cloud;
-	double init_x, init_y, init_z,init_yaw;
 	pcl::PointCloud<pcl::PointXYZI>::Ptr map;
 
 	// =============== variables of output file ===============
@@ -62,12 +58,8 @@ private:
 	std::string map_path, result_path, transformation_path;
 
 	// =============== variables of ICP parameters ===============
-	int total_frame;
-	bool use_filter;
-	double fix_rate;
 	double map_leaf_size;
 	double scan_leaf_size;
-	double previous_score;
 
 public:
 	int frame_number;
@@ -80,20 +72,24 @@ public:
 	icp_localization(ros::NodeHandle _nh) : map(new pcl::PointCloud<pcl::PointXYZI>)
 	{
 
-		std::vector<float> trans, rot;
 		std::cout << "Initializing ICP...\n";
 		this->nh = _nh;
+		this->odom_x = 0;
+		this->odom_y = 0;
+		this->odom_z = 0;
+		this->diff_x = 0;
+		this->diff_y = 0;
+		this->diff_z = 0;
+		this->frame_number = 0;
+		this->gps_ready = false;
+		this->map_ready = false;
+		std::vector<float> trans, rot;
+		this->pub_lidar = this->nh.advertise<sensor_msgs::PointCloud2>("/transformed_points", 1);
+		this->sub_map = this->nh.subscribe("/map", 4000000, &icp_localization::map_callback, this);
+		this->sub_odom = this->nh.subscribe("/wheel_odometry", 4000000, &icp_localization::odom_callback, this);
+		this->sub_lidar_scan = this->nh.subscribe("/lidar_points", 4000000, &icp_localization::lidar_scanning, this);
 
 		// grasping ros parameters
-		_nh.param<bool>("use_gps", use_gps, true);
-		_nh.param<double>("init_x", init_x, 0.15);
-		_nh.param<double>("init_y", init_y, 0.15);
-		_nh.param<double>("init_z", init_z, 0.15);
-		_nh.param<bool>("use_odom", use_gps, true);
-		_nh.param<double>("fix_rate", fix_rate, 1.0);
-		_nh.param<double>("init_yaw", init_yaw, 0.15);
-		_nh.param<int>("total_frame", total_frame, 1);
-		_nh.param<bool>("use_filter", use_filter, true);
 		_nh.param<double>("odom_ratio", odom_ratio, 1.0);
 		_nh.param<double>("lidar_ratio", lidar_ratio, 1.0);
 		_nh.param<double>("mapLeafSize", map_leaf_size, 0.15);
@@ -103,21 +99,6 @@ public:
 		_nh.param<std::vector<float>>("baselink2lidar_rot", rot, std::vector<float>());
 		_nh.param<std::vector<float>>("baselink2lidar_trans", trans, std::vector<float>());
 		_nh.param<std::string>("transformation_path", transformation_path, "transformation.txt");
-
-		this->odom_x = 0;
-		this->odom_y = 0;
-		this->odom_z = 0;
-		this->diff_x = 0;
-		this->diff_y = 0;
-		this->diff_z = 0;
-		this->frame_number = 0;
-		this->previous_score = 0;
-		this->pub_map = nh.advertise<sensor_msgs::PointCloud2>("/map", 1);
-		this->pub_lidar = this->nh.advertise<sensor_msgs::PointCloud2>("/transformed_points", 1);
-		if(this->use_odom)
-			this->sub_odom = this->nh.subscribe("/wheel_odometry", 4000000, &icp_localization::odom_callback, this);
-		this->sub_lidar_scan = this->nh.subscribe("/lidar_points", 4000000, &icp_localization::lidar_scanning, this);
-
 
 		// 把itri.yaml中的transform link存下來
 		if (trans.size() != 3 | rot.size() != 4)
@@ -131,19 +112,6 @@ public:
 									link_rotation(2, 0), 	link_rotation(2, 1), 	link_rotation(2, 2), 	trans.at(2),
 													  0, 					  0, 					  0, 			  1;
 
-		// load map
-		this->map = (new pcl::PointCloud<pcl::PointXYZI>)->makeShared();
-		if (pcl::io::loadPCDFile<pcl::PointXYZI>(map_path, *this->map) == -1)
-		{
-			PCL_ERROR("Couldn't read file map_downsample.pcd \n");
-			exit(0);
-		}
-
-		// std::cout << "Loaded "
-		// 		  << map->width * map->height
-		// 		  << " data points from nuscenes_map_downsample.pcd with the following fields: "
-		// 		  << std::endl;
-
 		this->frequency_ratio = lidar_ratio / (double)odom_ratio;
 
 		// getting initial guess
@@ -154,7 +122,6 @@ public:
 		std::cout << "Ready to localization\n";
 
 		std::cout << "Result path: " << result_path << std::endl;
-		result_path += ".csv";
 		outfile.open(result_path);
 		transformation_record.open(transformation_path);
 		outfile << "id,x,y,z,yaw,pitch,roll" << std::endl;
@@ -171,30 +138,15 @@ public:
 		Eigen::Matrix4f initial_guess;
 		geometry_msgs::PointStampedConstPtr gps_point;
 		gps_point = ros::topic::waitForMessage<geometry_msgs::PointStamped>("/gps", this->nh);
+		this->gps_ready = true;
+		std::cout << "Get GPS.\n";
 
-		// double init_x = 1773.433472;
-		// double init_y = 866.344177;
-		// double init_z = 0.0;
-		double yaw = this->init_yaw;
-		double init_x = this->init_x;
-		double init_y = this->init_y;
-		double init_z = this->init_z;
+		double yaw = 0;
 
-		if(this->use_gps){
-
-			initial_guess << 		cos(yaw), -sin(yaw), 	0, 	gps_point->point.x,
-									sin(yaw),  cos(yaw), 	0, 	gps_point->point.y,
-										   0, 		  0, 	1, 	gps_point->point.z,
-										   0, 		  0, 	0, 					 1;
-		}
-		else{
-
-			initial_guess << 	cos(yaw),   -sin(yaw), 		0, 		init_x,
-								sin(yaw),    cos(yaw), 		0, 		init_y,
-									   0,           0, 		1, 		init_z,
-									   0,           0, 		0, 		     1;
-		}
-
+		initial_guess << 		cos(yaw), -sin(yaw), 	0, 	gps_point->point.x,
+								sin(yaw),  cos(yaw), 	0, 	gps_point->point.y,
+									   0, 		  0, 	1, 	gps_point->point.z,
+									   0, 		  0, 	0, 					 1;
 
 		return initial_guess;
 	}
@@ -241,27 +193,34 @@ public:
 	void lidar_scanning(const sensor_msgs::PointCloud2::ConstPtr &msg)
 	{
 
+		while (!(gps_ready & map_ready))
+		{
+			// if (gps_ready)
+			// 	ROS_WARN("waiting for map data ...");
+			// if (map_ready)
+			// 	ROS_WARN("waiting for gps data ...");
+			ros::Duration(0.05).sleep();
+			ros::spinOnce();
+		}
 		pcl::PointCloud<pcl::PointXYZI>::Ptr filtered_map(new pcl::PointCloud<pcl::PointXYZI>);
 		pcl::PointCloud<pcl::PointXYZI> aligned_points;
 
 		// =============== Passthrough ===============
-		if(this->use_filter){
-			pcl::PassThrough<pcl::PointXYZI> filter;
-			filter.setInputCloud(this->map);
-			filter.setFilterFieldName("x");
-			filter.setFilterLimits(this->initial_guess(0, 3) - 100.0, this->initial_guess(0, 3) + 100.0);
-			filter.filter(*filtered_map);
+		pcl::PassThrough<pcl::PointXYZI> filter;
+		filter.setInputCloud(this->map);
+		filter.setFilterFieldName("x");
+		filter.setFilterLimits(this->initial_guess(0, 3) - 100.0, this->initial_guess(0, 3) + 100.0);
+		filter.filter(*filtered_map);
 
-			filter.setInputCloud(filtered_map);
-			filter.setFilterFieldName("y");
-			filter.setFilterLimits(this->initial_guess(1, 3) - 100.0, this->initial_guess(1, 3) + 100.0);
-			filter.filter(*filtered_map);
+		filter.setInputCloud(filtered_map);
+		filter.setFilterFieldName("y");
+		filter.setFilterLimits(this->initial_guess(1, 3) - 100.0, this->initial_guess(1, 3) + 100.0);
+		filter.filter(*filtered_map);
 
-			filter.setInputCloud(filtered_map);
-			filter.setFilterFieldName("z");
-			filter.setFilterLimits(1, 8);
-			filter.filter(*filtered_map);
-		}
+		filter.setInputCloud(filtered_map);
+		filter.setFilterFieldName("z");
+		filter.setFilterLimits(1, 8);
+		filter.filter(*filtered_map);
 
 		// =============== Down sampling lidar scan ===============
 		pcl::PointCloud<pcl::PointXYZI>::Ptr filtered_scan(new pcl::PointCloud<pcl::PointXYZI>);
@@ -280,43 +239,35 @@ public:
 		voxel_filter.setInputCloud(filtered_scan);
 		voxel_filter.setFilterFieldName("z");
 		voxel_filter.setFilterLimits(1.0, 7.5);
-		voxel_filter.setLeafSize(0.1f, 0.1f, 0.4f);
+		voxel_filter.setLeafSize(0.1f, 0.1f, 0.6f);
 		voxel_filter.filter(*filtered_scan);
 
 		// =============== start performing ICP ===============
 		pcl::IterativeClosestPoint<pcl::PointXYZI, pcl::PointXYZI> icp;
 		icp.setInputSource(filtered_scan);
-		if(this->use_filter)
-			icp.setInputTarget(filtered_map);
-		else
-			icp.setInputTarget(this->map);
+		icp.setInputTarget(filtered_map);
 		icp.setMaximumIterations(1000);				 
 		icp.setTransformationEpsilon(1e-12);		 
 		icp.setMaxCorrespondenceDistance(0.75);		
 		icp.setEuclideanFitnessEpsilon(0.00075);		 
 		icp.setRANSACOutlierRejectionThreshold(0.05); 
 		icp.align(aligned_points, this->initial_guess);
-
-		// publish transformed points and map
+		
+		// publish transformed points
 		sensor_msgs::PointCloud2::Ptr out_msg(new sensor_msgs::PointCloud2);
+		// pcl_ros::transformPointCloud(this->initial_guess, *msg, *out_msg);
 		pcl::toROSMsg(aligned_points, *out_msg);
 		out_msg->header = msg->header;
 		out_msg->header.frame_id = "world";
 		pub_lidar.publish(out_msg);
 
-		sensor_msgs::PointCloud2::Ptr map_cloud(new sensor_msgs::PointCloud2);
-		if(use_filter)
-			pcl::toROSMsg(*filtered_map, *map_cloud);
-		else
-			pcl::toROSMsg(*this->map, *map_cloud);
-
-		map_cloud->header.frame_id = "world";
-		this->pub_map.publish(*map_cloud);
 
 		// =============== Get car pos using ICP result===============
 		// initial guess是map 看向 car的轉換
 		this->initial_guess = icp.getFinalTransformation();
 		Eigen::Matrix4f transformation = this->initial_guess;
+
+
 
 		tf2::Matrix3x3 m2c_trans_rotation;
 		m2c_trans_rotation.setValue(
@@ -334,15 +285,15 @@ public:
 
 		std::cout << "Now frame: " << this->frame_number << std::endl;
 		outfile << ++this->frame_number << "," << initial_guess(0, 3) << "," << initial_guess(1, 3) << "," << 0 << "," << yaw << "," << pitch << "," << roll << std::endl;
-		transformation_record << transformation << std::endl
-							  << std::endl
-							  << std::endl
-							  << std::endl;
+		// transformation_record << transformation << std::endl
+		// 					  << std::endl
+		// 					  << std::endl
+		// 					  << std::endl;
 
-		if (this->frame_number == this->total_frame){
+		if (this->frame_number == 396)
 			ROS_INFO("Nuscenes bag finished");
-			system("pkill roslaunch");
-		}
+
+
 
 		// 除以frequency ratio 算出在一frame的lidar point當中我們的odom是多少
 		// 觀察csv後發現單純的icp下點基本上沒有移動
@@ -351,11 +302,7 @@ public:
 		initial_guess(1, 3) += this->diff_y / this->frequency_ratio;
 		initial_guess(2, 3) += this->diff_z / this->frequency_ratio;
 
-		if (icp.getFitnessScore() > this->previous_score || !icp.hasConverged())
-			this->frequency_ratio * this->fix_rate;
-		else
-			this->frequency_ratio / this->fix_rate;
-		this->previous_score = icp.getFitnessScore();
+
 	}
 
 	/**

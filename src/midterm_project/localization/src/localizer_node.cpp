@@ -75,9 +75,9 @@ public:
         car2Lidar.rotation.z = rot.at(2);
         car2Lidar.rotation.w = rot.at(3);
 
-        sub_map = _nh.subscribe("/map", 1, &Localizer::map_callback, this);
-        sub_points = _nh.subscribe("/lidar_points", 40000, &Localizer::pc_callback, this);
-        sub_gps = _nh.subscribe("/gps", 1, &Localizer::gps_callback, this);
+        sub_map = _nh.subscribe("/map", 4000000, &Localizer::map_callback, this);
+        sub_points = _nh.subscribe("/lidar_points", 4000000, &Localizer::pc_callback, this);
+        sub_gps = _nh.subscribe("/gps", 4000000, &Localizer::gps_callback, this);
         pub_points = _nh.advertise<sensor_msgs::PointCloud2>("/transformed_points", 1);
         pub_pose = _nh.advertise<geometry_msgs::PoseStamped>("/lidar_pose", 1);
         init_guess.setIdentity();
@@ -120,8 +120,11 @@ public:
 
         // 確保map跟gps都收到了
         while (!(gps_ready & map_ready))
-        {
-            ROS_WARN("waiting for map and gps data ...");
+        {   
+            if(gps_ready)
+                ROS_WARN("waiting for map data ...");
+            if(map_ready)
+                ROS_WARN("waiting for gps data ...");
             ros::Duration(0.05).sleep();
             ros::spinOnce();
         }
@@ -177,7 +180,7 @@ public:
         tf::Matrix3x3 mat(q);
         mat.getEulerYPR(yaw, pitch, roll);
         outfile << ++cnt << "," << tf_p.translation().x() << "," << tf_p.translation().y() << "," << tf_p.translation().z() << "," << yaw << "," << pitch << "," << roll << std::endl;
-        if (cnt == 202)
+        if (cnt == 396)
         {
             ROS_INFO("ITRI bag finished");
         }
@@ -244,10 +247,10 @@ public:
             Eigen::Matrix4f min_pose(Eigen::Matrix4f::Identity());
             /* [Part 3] you can perform ICP several times to find a good initial guess */
             int update_cnt = 0;
-            for (yaw = 1.9; yaw < 2.1; yaw += 0.05)
+            for (yaw = 0; yaw < 0.2; yaw += 0.05)
             {
                 update_cnt++;
-                // if(update_cnt > 20)
+                // if(update_cnt > 20)  
                 //     break;
                 Eigen::Translation3f init_translation(gps_point.x, gps_point.y, gps_point.z);
                 Eigen::AngleAxisf init_rotation_z(yaw, Eigen::Vector3f::UnitZ());

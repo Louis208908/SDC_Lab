@@ -1,0 +1,27 @@
+<launch>
+
+    <arg name="save_path" default="$(find localization)/results/competition2/result_no_pcd.csv" />
+    <param name="use_sim_time" value="true" />
+    <arg name="map_path" default="/home/louis/sdc_ws/data/nuscenes_map" />
+    <arg name="transformation_path" default="$(find localization)/results/competition2/transformation.txt" />
+
+    <node pkg="rviz" type="rviz" name="display_result" output="screen" args="-d $(find localization)/config/nuscenes.rviz" />
+
+    <node name="map_publisher" pkg="map_tile_loader" type="map_publisher" output="screen">
+        <!-- <remap from="/query_pose" to="/lidar_pose"/> -->
+        <param name="map_path" type="string" value="/home/louis/sdc_ws/data/nuscenes_maps" />
+    </node>
+
+
+    <node pkg="localization" type="localizer_no_pcd" name="localizer" output="screen">
+        <rosparam file="$(find localization)/config/nuscenes.yaml" command="load" />
+        <rosparam param="map_path" subst_value="True">$(arg map_path)</rosparam>
+        <rosparam param="result_save_path" subst_value="True">$(arg save_path)</rosparam>        
+        <rosparam param="transformation_path" subst_value="True">$(arg transformation_path)</rosparam>        
+        <param name="mapLeafSize" type="double" value="0.15"/>
+        <param name="scanLeafSize" type="double" value="0.15"/>
+        <param name="odom_ratio" type="double" value="12"/>
+        <param name="lidar_ratio" type="double" value="20"/>
+    </node>
+
+</launch>

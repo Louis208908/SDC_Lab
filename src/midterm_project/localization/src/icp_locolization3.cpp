@@ -62,8 +62,8 @@ private:
 	std::string map_path, result_path, transformation_path;
 
 	// =============== variables of ICP parameters ===============
-	int total_frame;
 	bool use_filter;
+	int total_frame;
 	double fix_rate;
 	double map_leaf_size;
 	double scan_leaf_size;
@@ -89,11 +89,11 @@ public:
 		_nh.param<double>("init_x", init_x, 0.15);
 		_nh.param<double>("init_y", init_y, 0.15);
 		_nh.param<double>("init_z", init_z, 0.15);
-		_nh.param<bool>("use_odom", use_gps, true);
+		_nh.param<bool>("use_odom", use_odom, true);
 		_nh.param<double>("fix_rate", fix_rate, 1.0);
+		_nh.param<bool>("use_filter", use_gps, true);
 		_nh.param<double>("init_yaw", init_yaw, 0.15);
 		_nh.param<int>("total_frame", total_frame, 1);
-		_nh.param<bool>("use_filter", use_filter, true);
 		_nh.param<double>("odom_ratio", odom_ratio, 1.0);
 		_nh.param<double>("lidar_ratio", lidar_ratio, 1.0);
 		_nh.param<double>("mapLeafSize", map_leaf_size, 0.15);
@@ -112,12 +112,12 @@ public:
 		this->diff_z = 0;
 		this->frame_number = 0;
 		this->previous_score = 0;
-		this->pub_map = nh.advertise<sensor_msgs::PointCloud2>("/map", 1);
+		this->pub_map = this->nh.advertise<sensor_msgs::PointCloud2>("/map", 1);
 		this->pub_lidar = this->nh.advertise<sensor_msgs::PointCloud2>("/transformed_points", 1);
+
 		if(this->use_odom)
 			this->sub_odom = this->nh.subscribe("/wheel_odometry", 4000000, &icp_localization::odom_callback, this);
 		this->sub_lidar_scan = this->nh.subscribe("/lidar_points", 4000000, &icp_localization::lidar_scanning, this);
-
 
 		// 把itri.yaml中的transform link存下來
 		if (trans.size() != 3 | rot.size() != 4)
@@ -245,7 +245,7 @@ public:
 		pcl::PointCloud<pcl::PointXYZI> aligned_points;
 
 		// =============== Passthrough ===============
-		if(this->use_filter){
+		if (this->use_filter){
 			pcl::PassThrough<pcl::PointXYZI> filter;
 			filter.setInputCloud(this->map);
 			filter.setFilterFieldName("x");
@@ -269,30 +269,19 @@ public:
 		filtered_scan = down_sampling(msg);
 
 		// =============== transform scan to car ===============
-		// Eigen::Matrix4f trans = get_transform("nuscenes_lidar");
 		transformPointCloud(*filtered_scan, *filtered_scan, c2l_eigen_transform);
-		// std::cout << "Trans from tf:" << std::endl;
-		// std::cout << trans << std::endl;
-		// std::cout << "Trans from yaml:" << std::endl;
-		// std::cout << c2l_eigen_transform << std::endl;
 
-		pcl::VoxelGrid<pcl::PointXYZI> voxel_filter;
-		voxel_filter.setInputCloud(filtered_scan);
-		voxel_filter.setFilterFieldName("z");
-		voxel_filter.setFilterLimits(1.0, 7.5);
-		voxel_filter.setLeafSize(0.1f, 0.1f, 0.4f);
-		voxel_filter.filter(*filtered_scan);
 
 		// =============== start performing ICP ===============
 		pcl::IterativeClosestPoint<pcl::PointXYZI, pcl::PointXYZI> icp;
 		icp.setInputSource(filtered_scan);
-		if(this->use_filter)
+		if (this->use_filter)
 			icp.setInputTarget(filtered_map);
 		else
 			icp.setInputTarget(this->map);
 		icp.setMaximumIterations(1000);				 
 		icp.setTransformationEpsilon(1e-12);		 
-		icp.setMaxCorrespondenceDistance(0.75);		
+		icp.setMaxCorrespondenceDistance(10);		
 		icp.setEuclideanFitnessEpsilon(0.00075);		 
 		icp.setRANSACOutlierRejectionThreshold(0.05); 
 		icp.align(aligned_points, this->initial_guess);
@@ -305,13 +294,12 @@ public:
 		pub_lidar.publish(out_msg);
 
 		sensor_msgs::PointCloud2::Ptr map_cloud(new sensor_msgs::PointCloud2);
-		if(use_filter)
+		if (this->use_filter)
 			pcl::toROSMsg(*filtered_map, *map_cloud);
 		else
 			pcl::toROSMsg(*this->map, *map_cloud);
-
 		map_cloud->header.frame_id = "world";
-		this->pub_map.publish(*map_cloud);
+		pub_map.publish(*map_cloud);
 
 		// =============== Get car pos using ICP result===============
 		// initial guess是map 看向 car的轉換
@@ -428,6 +416,7 @@ public:
 		this->odom_z = msg->pose.pose.position.z;
 
 	}
+
 };
 
 int main(int argc, char **argv)

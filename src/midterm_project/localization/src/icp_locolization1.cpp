@@ -36,17 +36,20 @@ private:
 	tf::TransformBroadcaster tf_broadcaster;
 
 
-	// =============== variables of transformation ===============
+	// =============== variables of transformation ===============zz
+	double init_yaw;
+	double init_x, init_y,init_z;
 	Eigen::Matrix4f initial_guess;
-	pcl::PointCloud<pcl::PointXYZI>::Ptr map;	
 	sensor_msgs::PointCloud2 Final_map;
-	sensor_msgs::PointCloud2 Final_cloud;
 	Eigen::Matrix4f c2l_eigen_transform;
+	sensor_msgs::PointCloud2 Final_cloud;
+	pcl::PointCloud<pcl::PointXYZI>::Ptr map;	
 
 
 	// =============== variables of output file ===============
-	std::string map_path, result_path;
+	int frame;
 	std::ofstream outfile;
+	std::string map_path, result_path;
 
 	// =============== variables of ICP parameters ===============
 	double map_leaf_size;
@@ -64,17 +67,22 @@ public:
 
 		std::vector<float> trans, rot;
 		this->nh = _nh;
-		this->sub_lidar_scan = this->nh.subscribe("/lidar_points", 400000, &icp_localization::lidar_scanning, this);
 		this->frame_number = 0;
 		std::cout << "Initializing ICP...\n";
+		this->sub_lidar_scan = this->nh.subscribe("/lidar_points", 400000, &icp_localization::lidar_scanning, this);
 
 		// grasping ros parameters
-		_nh.param<std::string>("result_save_path", result_path, "result1.csv");
-		_nh.param<std::string>("map_path", map_path, "itri_map.pcd");
-		_nh.param<double>("scanLeafSize", scan_leaf_size, 0.15);
+		_nh.param<int>("frame", frame, 0);
+		_nh.param<double>("init_x", init_x, 0.15);
+		_nh.param<double>("init_y", init_y, 0.15);
+		_nh.param<double>("init_z", init_z, 0.15);
+		_nh.param<double>("init_yaw", init_yaw, 0.15);
 		_nh.param<double>("mapLeafSize", map_leaf_size, 0.15);
-		_nh.param<std::vector<float>>("baselink2lidar_trans", trans, std::vector<float>());
+		_nh.param<double>("scanLeafSize", scan_leaf_size, 0.15);
+		_nh.param<std::string>("map_path", map_path, "itri_map.pcd");
+		_nh.param<std::string>("result_save_path", result_path, "result1.csv");
 		_nh.param<std::vector<float>>("baselink2lidar_rot", rot, std::vector<float>());
+		_nh.param<std::vector<float>>("baselink2lidar_trans", trans, std::vector<float>());
 
 		// 把itri.yaml中的transform link存下來
 		if (trans.size() != 3 | rot.size() != 4)
@@ -118,12 +126,19 @@ public:
 		geometry_msgs::PointStampedConstPtr gps_point;
 		gps_point = ros::topic::waitForMessage<geometry_msgs::PointStamped>("/gps", this->nh);
 
-		double yaw = 2.449;
+		double yaw = this->init_yaw;
 
-		initial_guess << 	cos(yaw),	-sin(yaw),		0,		gps_point->point.x,
-							sin(yaw),	 cos(yaw),		0,		gps_point->point.y,
-								   0,			0,		1,		gps_point->point.z,
-								   0,			0,		0,						 1;
+
+		// initial_guess << 	cos(yaw),	-sin(yaw),		0,		gps_point->point.x,
+		// 					sin(yaw),	 cos(yaw),		0,		gps_point->point.y,
+		// 						   0,			0,		1,		gps_point->point.z,
+		// 						   0,			0,		0,						 1;
+
+
+		initial_guess << 	cos(yaw),	-sin(yaw),		0,		this->init_x,
+							sin(yaw),	 cos(yaw),		0,		this->init_y,
+								   0,			0,		1,		this->init_z,
+								   0,			0,		0,				   1;
 
 		return initial_guess;
 	}
@@ -137,9 +152,9 @@ public:
 	 */
 	pcl::PointCloud<pcl::PointXYZI>::Ptr down_sampling(const sensor_msgs::PointCloud2::ConstPtr &msg){
 
+		pcl::PCLPointCloud2::Ptr filtered_scan(new pcl::PCLPointCloud2());
 		pcl::PointCloud<pcl::PointXYZI>::Ptr raw_scan(new pcl::PointCloud<pcl::PointXYZI>);
 		pcl::PointCloud<pcl::PointXYZI>::Ptr result_scan(new pcl::PointCloud<pcl::PointXYZI>);
-		pcl::PCLPointCloud2::Ptr filtered_scan(new pcl::PCLPointCloud2());
 
 		// sensor_msgs -> PointCloud
 		pcl::fromROSMsg(*msg, *raw_scan);
@@ -173,16 +188,16 @@ public:
 		pcl::PointCloud<pcl::PointXYZI> aligned_points;
 
 		// =============== Passthrough ===============
-		pcl::PassThrough<pcl::PointXYZI> filter;
-		filter.setInputCloud(this->map);
-		filter.setFilterFieldName("x");
-		filter.setFilterLimits(this->initial_guess(0, 3) - 100.0, this->initial_guess(0, 3) + 100.0);
-		filter.filter(*filtered_map);
+		pcl::PassThrough<pcl::PointXYZI> passthrough_filter;
+		passthrough_filter.setInputCloud(this->map);
+		passthrough_filter.setFilterFieldName("x");
+		passthrough_filter.setFilterLimits(this->initial_guess(0, 3) - 100.0, this->initial_guess(0, 3) + 100.0);
+		passthrough_filter.filter(*filtered_map);
 
-		filter.setInputCloud(filtered_map);
-		filter.setFilterFieldName("y");
-		filter.setFilterLimits(this->initial_guess(1, 3) - 100.0, this->initial_guess(1, 3) + 100.0);
-		filter.filter(*filtered_map);
+		passthrough_filter.setInputCloud(filtered_map);
+		passthrough_filter.setFilterFieldName("y");
+		passthrough_filter.setFilterLimits(this->initial_guess(1, 3) - 100.0, this->initial_guess(1, 3) + 100.0);
+		passthrough_filter.filter(*filtered_map);
 
 		// =============== Down sampling lidar scan ===============
 		pcl::PointCloud<pcl::PointXYZI>::Ptr filtered_scan(new pcl::PointCloud<pcl::PointXYZI>);
@@ -191,9 +206,9 @@ public:
 
 		// =============== transform lidar scan to car ===============
 		// transformPointCloud(source, target, transform)
-
 		// =============== Illustration of transformPointCloud ===============
-		// 將source的點雲使用transform轉換
+		// Task: 將source的點雲使用transform轉換
+		//
 		//               資料                                        資料
 		// 			    /										   /
 		// 			  /										     /
@@ -238,7 +253,7 @@ public:
 		std::cout << "Now frame: " << this->frame_number << std::endl;
 		outfile << ++this->frame_number << "," << initial_guess(0, 3) << "," << initial_guess(1, 3) << "," << initial_guess(2, 3) << "," << yaw << "," << pitch << "," << roll << std::endl;
 
-		if (this->frame_number == 201){
+		if (this->frame_number == this->frame){
 			ROS_INFO("ITRI bag finished");
 		}
 	}
