@@ -1,12 +1,50 @@
 <launch>
-  <node pkg="robot_localization" type="ekf_localization_node" name="ekf_se" clear_params="true">
-    <rosparam command="load" file="$(find localization)/params/nuscenes_ekf.yaml" />
 
-    <remap from="odometry/filtered" to="ekf/pose"/>
-    
-	<!--  Placeholder for output topic remapping
-    <remap from="accel/filtered" to=""/>
-    -->
+	<node pkg="robot_localization" type="ekf_localization_node" name="ekf" clear_params="true">
+		<rosparam file="$(find localization)/config/ekf.yaml" command="load" />
+	</node> 
 
-  </node>
+	<node pkg="robot_localization" type="ekf_localization_node" name="ekf_odom" clear_params="true">
+		<rosparam file="$(find localization)/config/ekf2.yaml" command="load" />
+		<remap from="odometry/filtered" to="odometry/filtered_wheel" />
+	</node> 
+	<node pkg="tf2_ros" type="static_transform_publisher" name="car_lidar_frame_publisher" args="0.986 0 1.84 -0.015 0.017 -0.707 0.707 car nuscenes_lidar" />
+
+
+    <param name="use_sim_time" value="true" />
+    <!-- <arg name="map_path" default="/home/louis/sdc_ws/data/nuscenes_map.pcd" /> -->
+    <arg name="map_path" default="/home/louis/sdc_ws/data/nuscenes_map_down_sampled.pcd" />
+    <arg name="transformation_path" default="$(find localization)/results/competition2/transformation.txt" />
+    <arg name="save_path" default="$(find localization)/results/competition2/result_test_no_filter" />
+    <node pkg="rviz" type="rviz" name="display_result" output="screen" args="-d $(find localization)/config/nuscenes.rviz" >
+        <remap from="initialpose" to="set_pose" />
+    </node>
+
+
+    <node pkg="localization" type="icp2" name="localizer" output="screen">
+        <param name="init_z" type="double" value="0.0"/>
+        <param name="use_gps" type="bool" value="false"/>
+        <param name="use_odom" type="bool" value="true"/>
+        <param name="fix_rate" type="double" value="1.2"/>
+        <param name="init_yaw" type="double" value="0.0"/>
+        <param name="total_frame" type="int" value="396"/>
+        <param name="use_filter" type="bool" value="true"/>
+        <param name="init_y" type="double" value="866.34"/>
+        <param name="lidar_ratio" type="double" value="20"/>
+        <param name="init_x" type="double" value="1773.43"/>
+        <param name="odom_ratio" type="double" value="12.2"/>
+        <param name="mapLeafSize" type="double" value="0.15"/>
+        <param name="scanLeafSize" type="double" value="0.15"/>
+        <rosparam param="map_path" subst_value="True">$(arg map_path)</rosparam>
+        <rosparam file="$(find localization)/config/nuscenes.yaml" command="load" />
+        <rosparam param="result_save_path" subst_value="True">$(arg save_path)</rosparam>        
+        <rosparam param="transformation_path" subst_value="True">$(arg transformation_path)</rosparam>        
+        <!-- RMSE 0.055 -->
+        <!-- <param name="odom_ratio" type="double" value="11.97"/>   -->
+        <!-- RMSE 0.053 -->
+        <!-- <param name="odom_ratio" type="double" value="12"/> -->
+        <!-- RMSE 0.052 -->
+    </node>
+
+
 </launch>
