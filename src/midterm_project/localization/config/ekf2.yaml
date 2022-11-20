@@ -1,0 +1,12 @@
+# other parameters are ignored
+frequency: 100
+two_d_mode: true
+
+map_frame: world
+odom_frame: origin
+base_link_frame: car
+world_frame: origin
+
+odom0: wheel_odometry
+odom0_config: [false, false, false,false, false, false,true,  true,  false,false, false, true,false, false, false]
+odom0_queue_size: 100

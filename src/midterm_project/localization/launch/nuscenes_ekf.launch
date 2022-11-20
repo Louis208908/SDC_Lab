@@ -14,8 +14,10 @@
     <param name="use_sim_time" value="true" />
     <!-- <arg name="map_path" default="/home/louis/sdc_ws/data/nuscenes_map.pcd" /> -->
     <arg name="map_path" default="/home/louis/sdc_ws/data/nuscenes_map_down_sampled.pcd" />
-    <arg name="transformation_path" default="$(find localization)/results/competition2/transformation.txt" />
-    <arg name="save_path" default="$(find localization)/results/competition2/result_test_no_filter" />
+    <!-- <arg name="transformation_path" default="$(find localization)/results/competition2/transformation.txt" /> -->
+    <arg name="transformation_path" default="$(find localization)/results/competition3/transformation.txt" />
+    <!-- <arg name="save_path" default="/home/louis/sdc_ws/src/midterm_project/localization/results/competition2/result_test_no_filter.csv" /> -->
+    <arg name="save_path" default="$(find localization)/results/result.csv" />
     <node pkg="rviz" type="rviz" name="display_result" output="screen" args="-d $(find localization)/config/nuscenes.rviz" >
         <remap from="initialpose" to="set_pose" />
     </node>
@@ -24,15 +26,15 @@
     <node pkg="localization" type="icp2" name="localizer" output="screen">
         <param name="init_z" type="double" value="0.0"/>
         <param name="use_gps" type="bool" value="false"/>
-        <param name="use_odom" type="bool" value="true"/>
-        <param name="fix_rate" type="double" value="1.2"/>
-        <param name="init_yaw" type="double" value="0.0"/>
-        <param name="total_frame" type="int" value="396"/>
+        <param name="use_odom" type="bool" value="false"/>
+        <param name="init_y" type="double" value="1014"/>
+        <param name="init_x" type="double" value="1717"/>
+        <param name="fix_rate" type="double" value="1.1"/>
+        <param name="total_frame" type="int" value="389"/>
         <param name="use_filter" type="bool" value="true"/>
-        <param name="init_y" type="double" value="866.34"/>
+        <param name="init_yaw" type="double" value="-2.18"/>
         <param name="lidar_ratio" type="double" value="20"/>
-        <param name="init_x" type="double" value="1773.43"/>
-        <param name="odom_ratio" type="double" value="12.2"/>
+        <param name="odom_ratio" type="double" value="12"/>
         <param name="mapLeafSize" type="double" value="0.15"/>
         <param name="scanLeafSize" type="double" value="0.15"/>
         <rosparam param="map_path" subst_value="True">$(arg map_path)</rosparam>
@@ -45,6 +47,7 @@
         <!-- <param name="odom_ratio" type="double" value="12"/> -->
         <!-- RMSE 0.052 -->
     </node>
+
 
 
 </launch>
